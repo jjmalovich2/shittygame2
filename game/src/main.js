@@ -61,7 +61,7 @@ function big() {
 }
 
 // define some constants
-const JUMP_FORCE = 1320;
+const JUMP_FORCE = 990;
 const MOVE_SPEED = 480;
 const FALL_DEATH = 2400;
 let TERMINAL_VELOCITY = 2001;
@@ -362,8 +362,8 @@ scene("game", ({ levelId, coins } = { levelId: 0, coins: 0 }) => {
         canDoubleJump = false; // disable double-jumping while boosting
         player.sprite = "propeller-hat";
         player.vel.y = 0;
-        player.gravityScale = -0.6;
-        wait(0.75, () => {
+        player.gravityScale = -0.5;
+        wait(0.6, () => {
             player.sprite = "bean";
             dropPropeller();
             player.gravityScale = 1;
@@ -427,10 +427,6 @@ scene("game", ({ levelId, coins } = { levelId: 0, coins: 0 }) => {
     onKeyRelease("down", () => {
         player.gravityScale = 1;
     });
-
-    onKeyPress("x", () => {
-        slam();
-    })
 
     onGamepadButtonPress("south", jump);
 
