@@ -1,5 +1,6 @@
 import kaplay from "./src.js";
 import loadAssets from "./assets";
+import findPlatformHitbox from "./platform.js";
 
 loadAssets();
 
@@ -64,17 +65,18 @@ function big() {
 const JUMP_FORCE = 990;
 const MOVE_SPEED = 480;
 const FALL_DEATH = 2400;
-let TERMINAL_VELOCITY = 2001;
+let TERMINAL_VELOCITY = 2000;
+let platformHitbox;
 
 const LEVELS = [
     [
-        "            ",
-        "            ",
-        "       $$   ",
-        "      ===   ",
-        "            ",
-        "   ^^  > = @",
-        "============",
+        "                                =                ",
+        "                                =  =             ",
+        "         ==           =         =  =             ",
+        "      ========        =         =  =             ",
+        "                      =         =                ",
+        "                      =         =                ",
+        "=================================================",
     ],
     [
         "                          $",
@@ -109,8 +111,8 @@ const levelConf = {
     tiles: {
         "=": () => [
             sprite("grass"),
-            area({ friction: 0.02, restitution: 0 }),
-            body({ isStatic: true }),
+            //area({ friction: 0.02, restitution: 0 }),
+            //body({ isStatic: true }),
             anchor("bot"),
             offscreen({ hide: true }),
             "platform",
@@ -155,9 +157,32 @@ scene("game", ({ levelId, coins } = { levelId: 0, coins: 0 }) => {
     // add level to scene
     const level = addLevel(LEVELS[levelId ?? 0], levelConf);
 
+    const hitboxes = findPlatformHitbox(LEVELS[levelId]);
+
+    const TILE_SIZE = 64; // Adjust to match your grid scale
+
+    const X_OFFSET = -32;
+    const Y_OFFSET = -64;
+
+    function createPlatformHitbox(x, y, width, height) {
+        platformHitbox = add([
+            rect(width * TILE_SIZE, height * TILE_SIZE), // Hitbox size
+            pos(x * TILE_SIZE + X_OFFSET, y * TILE_SIZE + Y_OFFSET), // Position
+            area(),
+            body({ isStatic: true }), // Static so it doesn't fall
+            color(255, 0, 0), // Optional: make it semi-transparent for debugging
+            opacity(0.3),
+            "p-hitbox", // Tag for collision detection
+        ]);
+    }
+
+    hitboxes.forEach(({ x, y, width, height }) => {
+        createPlatformHitbox(x, y, width, height);
+    });
+
     // define player object
     const player = add([
-        sprite("bean"),
+        rect(62,53),
         pos(0, 0),
         area(),
         scale(1),
@@ -166,8 +191,23 @@ scene("game", ({ levelId, coins } = { levelId: 0, coins: 0 }) => {
         // the custom component we defined above
         big(),
         anchor("bot"),
-        "player"
+        rotate(),
+        "player",
+        opacity(0),
     ]);
+    const playerSprite = add([
+        pos(player.pos.x, player.pos.y),
+        //area(),
+        sprite("bean"),
+        anchor("center"),
+        rotate(),
+        "player-sprite"
+    ]);
+
+    // update the player-sprite hitbox every frame
+    player.onUpdate(() => {
+        playerSprite.pos = vec2(player.pos.x, player.pos.y-26);
+    })
 
     // camera lerping and zooming
     const ZOOM_LERP = 0.1; // Lower = more delay, higher = less delay
@@ -209,7 +249,6 @@ scene("game", ({ levelId, coins } = { levelId: 0, coins: 0 }) => {
         }
         if (player.vel.y > TERMINAL_VELOCITY) {
             player.vel.y = TERMINAL_VELOCITY;
-            SLAM = true;
         }
     });
 
@@ -306,13 +345,21 @@ scene("game", ({ levelId, coins } = { levelId: 0, coins: 0 }) => {
     ]);
 
     let canDoubleJump = true;
-    function jump() {
+    let wallSliding = false;
+    let cooldown = true;
+    async function jump() {
         // these 2 functions are provided by body() component
-        if (player.isGrounded()) {
+        if (wallSliding && cooldown) {
+            player.jump(JUMP_FORCE * 0.65);
+            cooldown = false;
+            await 
+        }
+        else if (player.isGrounded() && !wallSliding) {
             player.jump(JUMP_FORCE);
             canDoubleJump = true;
+            cooldown = false;
         }
-        else if (!player.isGrounded() && canDoubleJump) {
+        else if (!player.isGrounded() && canDoubleJump && !wallSliding) {
             player.jump(JUMP_FORCE * 0.8);
             canDoubleJump = false;
         }
@@ -325,11 +372,11 @@ scene("game", ({ levelId, coins } = { levelId: 0, coins: 0 }) => {
         
         if (player.vel.y > 0) {
             player.vel.y = 0;
-            player.sprite = "umbrella-hat";
+            playerSprite.sprite = "umbrella-hat";
             player.gravityScale = 0.1;
             canGlide = false;
             wait(1, () => {
-                player.sprite = "bean";
+                playerSprite.sprite = "bean";
                 player.gravityScale = 1; 
             });
         }
@@ -353,18 +400,20 @@ scene("game", ({ levelId, coins } = { levelId: 0, coins: 0 }) => {
         prop_particle.jump(-player.vel.y+rand(200, 400));
         prop_particle.onUpdate(() => prop_particle.angle -= 90 * dt());
     }
+
     // boost
     let canBoost = true;
     function boost() {
         if (!canBoost) return; // Prevent re-triggering while boosting
     
+        player.gravityScale = 0;
         canBoost = false; // Disable re-triggering
         canDoubleJump = false; // disable double-jumping while boosting
-        player.sprite = "propeller-hat";
+        playerSprite.sprite = "propeller-hat";
         player.vel.y = 0;
         player.gravityScale = -0.5;
         wait(0.6, () => {
-            player.sprite = "bean";
+            playerSprite.sprite = "bean";
             dropPropeller();
             player.gravityScale = 1;
         });
@@ -393,31 +442,87 @@ scene("game", ({ levelId, coins } = { levelId: 0, coins: 0 }) => {
             drawSlamParticle();
         }
     }
-    onCollideUpdate("slam-particle", "platform", (p, f) => { p.vel.x = 0; });
 
     player.on("ground", () => {
-        player.sprite = "bean";
+        playerSprite.sprite = "bean";
         player.gravityScale = 1;
         canGlide = true; // Re-enable gliding
         canBoost = true; // enable boost
     });
-    player.onCollide("platform", () => {
+    player.onCollide("p-hitbox", () => {
         if (player.vel.y >= TERMINAL_VELOCITY) { slam(); console.log("SLAMMED!")}
     });
 
-    onKeyPress("up", jump);
+    // wall sliding and gravity reset
+    let lean_dir = 0;
+    let canWallslide = false;
+    player.onCollideUpdate("p-hitbox", () => {
+        if (player.isGrounded()) { player.gravityScale = 1; }
+        if (!player.isGrounded() && player.vel.y >= 0 && canWallslide) { 
+            player.vel.y = 0;
+            TERMINAL_VELOCITY = 500;
+            wallSliding = true;
+            playerSprite.rotateTo(30*lean_dir);
+
+            if (wallSliding) {
+                player.onCollideEnd(() => {
+                    player.gravityScale = 1;
+                    TERMINAL_VELOCITY = 2000;
+                    wallSliding = false;
+                    playerSprite.rotateTo(0);
+                });
+            }
+        } else {
+            player.gravityScale = 1;
+            TERMINAL_VELOCITY = 2000;
+            playerSprite.rotateTo(0);
+        }
+    });
+
+    // wall sliding particle
+    let direction;
+    player.onCollide("p-hitbox", (obj, col) => { if (col.isLeft()) { direction = RIGHT; } else { direction = LEFT; } });
+    loop(0.15, () => {
+        if (wallSliding) {
+            const sp = add([
+                pos(player.pos.x-16, player.pos.y-32),
+                rect(8,8),
+                color(74,34,11),
+                anchor("center"),
+                area({ collisionIgnore: ["particle", "player", "danger", "enemy"] }),
+                body(),
+                lifespan(0.5, { fade: 0.5 }),
+                opacity(1),
+                move(direction, rand(100, 150)),
+                "particle",
+            ]);
+            //sp.jump(333);
+        }
+    });
+
+    onKeyPress("up", () => { await jump(); });
 
     // glide with space
     onKeyPress("space", glide);
 
-    onKeyPress("c", boost);
+    onKeyPress("c", () => { if (!player.isGrounded()) { boost(); }});
 
     onKeyDown("left", () => {
         player.move(-MOVE_SPEED, 0);
+        canWallslide = true;
+        lean_dir = 1;
+    });
+    onKeyRelease("left", () => {
+        canWallslide = false;
     });
 
     onKeyDown("right", () => {
         player.move(MOVE_SPEED, 0);
+        canWallslide = true;
+        lean_dir = -1;
+    });
+    onKeyRelease("right", () => {
+        canWallslide = false;
     });
 
     onKeyPress("down", () => {
