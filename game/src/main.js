@@ -1,5 +1,5 @@
 import kaplay from "./src.js";
-import loadAssets from "./assets";
+import loadAssets from "./assets.js";
 import findPlatformHitbox from "./platform.js";
 
 loadAssets();
@@ -171,7 +171,7 @@ scene("game", ({ levelId, coins } = { levelId: 0, coins: 0 }) => {
             area(),
             body({ isStatic: true }), // Static so it doesn't fall
             color(255, 0, 0), // Optional: make it semi-transparent for debugging
-            opacity(0.3),
+            opacity(0),
             "p-hitbox", // Tag for collision detection
         ]);
     }
@@ -346,23 +346,17 @@ scene("game", ({ levelId, coins } = { levelId: 0, coins: 0 }) => {
 
     let canDoubleJump = true;
     let wallSliding = false;
-    let cooldown = true;
     async function jump() {
-        // these 2 functions are provided by body() component
-        if (wallSliding && cooldown) {
-            player.jump(JUMP_FORCE * 0.65);
-            cooldown = false;
-            await 
-        }
-        else if (player.isGrounded() && !wallSliding) {
+        if (player.isGrounded() && !wallSliding) {
             player.jump(JUMP_FORCE);
             canDoubleJump = true;
-            cooldown = false;
-        }
-        else if (!player.isGrounded() && canDoubleJump && !wallSliding) {
+        } else if (!player.isGrounded() && canDoubleJump) {
             player.jump(JUMP_FORCE * 0.8);
             canDoubleJump = false;
         }
+        else if (wallSliding) {
+            canDoubleJump = true;
+        } 
     }
 
     // gliding
@@ -470,6 +464,7 @@ scene("game", ({ levelId, coins } = { levelId: 0, coins: 0 }) => {
                     TERMINAL_VELOCITY = 2000;
                     wallSliding = false;
                     playerSprite.rotateTo(0);
+                    canDoubleJump = true;
                 });
             }
         } else {
@@ -500,7 +495,7 @@ scene("game", ({ levelId, coins } = { levelId: 0, coins: 0 }) => {
         }
     });
 
-    onKeyPress("up", () => { await jump(); });
+    onKeyPress("up", () => { jump(); });
 
     // glide with space
     onKeyPress("space", glide);
