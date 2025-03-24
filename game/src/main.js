@@ -1,6 +1,7 @@
 import kaplay from "./src.js";
 import loadAssets from "./assets.js";
 import findPlatformHitbox from "./platform.js";
+import { GUNS } from "./guns.js";
 
 loadAssets();
 
@@ -67,6 +68,7 @@ const MOVE_SPEED = 480;
 const FALL_DEATH = 2400;
 let TERMINAL_VELOCITY = 2000;
 let platformHitbox;
+let currGun = GUNS.GLOCK18;
 
 const LEVELS = [
     [
@@ -153,6 +155,11 @@ const levelConf = {
     },
 };
 
+layers([
+    "game",
+    "ui"
+], "game");
+
 scene("game", ({ levelId, coins } = { levelId: 0, coins: 0 }) => {
     // add level to scene
     const level = addLevel(LEVELS[levelId ?? 0], levelConf);
@@ -180,6 +187,16 @@ scene("game", ({ levelId, coins } = { levelId: 0, coins: 0 }) => {
         createPlatformHitbox(x, y, width, height);
     });
 
+    const cursor = add([
+        sprite("cursor"),
+        pos(),
+        layer("ui"),
+        scale(1),
+        //fakeMouse(),
+        anchor("center")
+    ]);
+    setCursor("none");
+
     // define player object
     const player = add([
         rect(62,53),
@@ -190,7 +207,7 @@ scene("game", ({ levelId, coins } = { levelId: 0, coins: 0 }) => {
         body(),
         // the custom component we defined above
         big(),
-        anchor("bot"),
+        anchor("center"),
         rotate(),
         "player",
         opacity(0),
@@ -203,11 +220,38 @@ scene("game", ({ levelId, coins } = { levelId: 0, coins: 0 }) => {
         rotate(),
         "player-sprite"
     ]);
+    const gun = player.add([
+        sprite("gun"),
+        anchor(vec2(-2.3,0)),
+        "gun",
+        rotate()
+    ]);
 
     // update the player-sprite hitbox every frame
     player.onUpdate(() => {
-        playerSprite.pos = vec2(player.pos.x, player.pos.y-26);
-    })
+        playerSprite.pos = vec2(player.pos.x, player.pos.y);
+    });
+
+    let prevPos = vec2(player.pos.x, player.pos.y);
+    onUpdate(() => {
+        gun.angle = cursor.pos.sub(player.pos).angle();
+        gun.flipY = Math.abs(gun.angle) > 90;
+        
+        cursor.move(mouseDeltaPos().scale(35));
+
+        // move the mouse with the player
+        let deltaPos = vec2(player.pos.x, player.pos.y).sub(prevPos);
+        cursor.move(deltaPos.scale(60));
+        //debug.log(deltaPos);
+        prevPos = vec2(player.pos.x, player.pos.y);
+
+        // recoil and shooting
+        while (isMouseDown("left")) {
+            loop((1/currGun.rps), () => {
+                cursor.move(0, currGun.recoil*5);
+            });
+        }
+    });
 
     // camera lerping and zooming
     const ZOOM_LERP = 0.1; // Lower = more delay, higher = less delay
@@ -239,6 +283,10 @@ scene("game", ({ levelId, coins } = { levelId: 0, coins: 0 }) => {
     });
 
     onUpdate(() => setCamPos(lerp(getCamPos(), player.worldPos(), DELAY_LERP)));
+
+    onClick(() => {
+        setCursorLocked(true);
+    })
 
     // action() runs every frame
     let SLAM = false;
@@ -495,36 +543,36 @@ scene("game", ({ levelId, coins } = { levelId: 0, coins: 0 }) => {
         }
     });
 
-    onKeyPress("up", () => { jump(); });
+    onKeyPress("w", () => { jump(); });
 
     // glide with space
     onKeyPress("space", glide);
 
     onKeyPress("c", () => { if (!player.isGrounded()) { boost(); }});
 
-    onKeyDown("left", () => {
+    onKeyDown("a", () => {
         player.move(-MOVE_SPEED, 0);
         canWallslide = true;
         lean_dir = 1;
     });
-    onKeyRelease("left", () => {
+    onKeyRelease("a", () => {
         canWallslide = false;
     });
 
-    onKeyDown("right", () => {
+    onKeyDown("d", () => {
         player.move(MOVE_SPEED, 0);
         canWallslide = true;
         lean_dir = -1;
     });
-    onKeyRelease("right", () => {
+    onKeyRelease("d", () => {
         canWallslide = false;
     });
 
-    onKeyPress("down", () => {
+    onKeyPress("s", () => {
         player.gravityScale = 3;
     });
 
-    onKeyRelease("down", () => {
+    onKeyRelease("s", () => {
         player.gravityScale = 1;
     });
 
