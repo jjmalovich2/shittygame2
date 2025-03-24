@@ -12,6 +12,8 @@ export default function loadAssets() {
     loadSprite("umbrella-hat", "/sprites/umbrella_hat.png");
     loadSprite("propeller-hat", "/sprites/propeller_hat.png");
     loadSprite("propeller", "/sprites/propeller.png");
+    loadSprite("gun", "/sprites/gun.png");
+    loadSprite("cursor", "/sprites/cursor.png");
     loadSound("coin", "/examples/sounds/score.mp3");
     loadSound("powerup", "/examples/sounds/powerup.mp3");
     loadSound("blip", "/examples/sounds/blip.mp3");
