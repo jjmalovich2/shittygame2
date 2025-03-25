@@ -222,7 +222,7 @@ scene("game", ({ levelId, coins } = { levelId: 0, coins: 0 }) => {
     ]);
     const gun = player.add([
         sprite("gun"),
-        anchor(vec2(-2.3,0)),
+        anchor(vec2(-2.3,-0.75)),
         "gun",
         rotate()
     ]);
@@ -231,6 +231,61 @@ scene("game", ({ levelId, coins } = { levelId: 0, coins: 0 }) => {
     player.onUpdate(() => {
         playerSprite.pos = vec2(player.pos.x, player.pos.y);
     });
+
+    function drawSmallParticle(x, y, f, l) {
+        let size = rand(7, 12);
+        const small_particle = add([
+            rect(size, size),
+            color(74,34,11),
+            pos(x, y-10),
+            anchor("center"),
+            area({ collisionIgnore: ["particle", "player", "spike", "danger"], friction: 0.02, restitution: 0 }),
+            "particle",
+            "small-particle",
+            body(),
+            lifespan(l, { fade: 0.5 }),
+            opacity(1),
+        ]);
+
+        small_particle.addForce(vec2(choose([rand(6000,18000),-rand(6000,18000)]), 0).sub(small_particle.vel).scale(small_particle.mass*f));
+        small_particle.jump(f*rand(800, 1000));
+    }
+
+    const BULLET_SPEED = 1200;
+    const BARREL_OFFSET = 75;
+    function spawnBullet(x, y, dir) {
+        const offset = Vec2.fromAngle(dir).scale(BARREL_OFFSET)
+        const bulletSpawn = vec2(x,y).add(offset);
+
+        const bullet = add([
+            rect(10,5),
+            color(141,145,141),
+            pos(bulletSpawn),
+            anchor("center"),
+            area(),
+            rotate(dir),
+            opacity(),
+            move(Vec2.fromAngle(dir), BULLET_SPEED),
+            lifespan(1.1),
+            "bullet"
+        ]);
+        bullet.gravityScale = 0;
+
+        bullet.onCollide("p-hitbox", () => {
+            drawSmallParticle(bullet.pos.x, bullet.pos.y, 0.1, 0.5);
+            destroy(bullet);
+        });
+    }
+
+    let isFiring = false;
+    function fullAuto() {
+        if (!isFiring) return;
+
+        cursor.move(rand(-20*currGun.recoil, 5*currGun.recoil), -currGun.recoil*100+rand(-20*currGun.recoil, 20*currGun.recoil));
+        spawnBullet(player.pos.x, player.pos.y, gun.angle);
+
+        wait(0.05, fullAuto);
+    }
 
     let prevPos = vec2(player.pos.x, player.pos.y);
     onUpdate(() => {
@@ -245,11 +300,13 @@ scene("game", ({ levelId, coins } = { levelId: 0, coins: 0 }) => {
         //debug.log(deltaPos);
         prevPos = vec2(player.pos.x, player.pos.y);
 
-        // recoil and shooting
-        while (isMouseDown("left")) {
-            loop((1/currGun.rps), () => {
-                cursor.move(0, currGun.recoil*5);
-            });
+        if (isMouseDown("left")) {
+            if (!isFiring) {
+                isFiring = true;
+                fullAuto();
+            }   
+        } else {
+            isFiring = false;
         }
     });
 
@@ -461,27 +518,9 @@ scene("game", ({ levelId, coins } = { levelId: 0, coins: 0 }) => {
         });
     }
 
-    function drawSlamParticle() {
-        let size = rand(7, 12);
-        const slam_particle = add([
-            rect(size, size),
-            color(74,34,11),
-            pos(player.pos.x, player.pos.y-10),
-            anchor("center"),
-            area({ collisionIgnore: ["particle", "player", "spike", "danger"], friction: 0.02, restitution: 0 }),
-            "particle",
-            "slam-particle",
-            body(),
-            lifespan(2, { fade: 0.5 }),
-            opacity(1),
-        ]);
-
-        slam_particle.addForce(vec2(choose([rand(6000,18000),-rand(6000,18000)]), 0).sub(slam_particle.vel).scale(slam_particle.mass));
-        slam_particle.jump(rand(800, 1000));
-    }
     function slam() {
         for (let i = 0; i < rand(5,7); i++) {
-            drawSlamParticle();
+            drawSmallParticle(player.pos.x, player.pos.y, 1, 2);
         }
     }
 
