@@ -1,5 +1,6 @@
 import kaplay from "./src.js";
 import loadAssets from "./assets.js";
+import { socket, players } from "./socket.js";
 import findPlatformHitbox from "./platform.js";
 import { GUNS } from "./guns.js";
 
@@ -7,11 +8,6 @@ loadAssets();
 
 setGravity(3200);
 
-document.addEventListener("click", () => {
-    canvas.requestPointerLock();
-});
-
-//new commit
 // custom component controlling enemy patrol movement
 function patrol(speed = 60, dir = 1) {
     return {
@@ -227,70 +223,54 @@ scene("game", ({ levelId, coins } = { levelId: 0, coins: 0 }) => {
     ]);
     const gun = player.add([
         sprite("gun"),
-        anchor(vec2(-2.3,-0.75)),
+        anchor(vec2(-2.3,0)),
         "gun",
         rotate()
     ]);
+
+    onUpdate(() => {
+        Object.entries(players).forEach(([id, data]) => {
+            if (id === socket.id) return;
+    
+            if (!get(`remote-player-${id}`)) {
+                // Create remote player with same structure as local player
+                add([
+                    rect(62, 53),
+                    pos(data.x, data.y),
+                    area(),
+                    anchor("center"),
+                    opacity(0),
+                    `remote-hitbox-${id}`
+                ]);
+    
+                add([
+                    sprite("bean"),
+                    pos(data.x, data.y),
+                    anchor("center"),
+                    `remote-player-${id}`
+                ]);
+    
+                const remoteGun = add([
+                    sprite("gun"),
+                    pos(data.x, data.y),
+                    anchor(vec2(-2.3, 0)),
+                    `remote-gun-${id}`
+                ]);
+            } else {
+                // Update existing remote player
+                get(`remote-hitbox-${id}`).pos = vec2(data.x, data.y);
+                get(`remote-player-${id}`).pos = vec2(data.x, data.y);
+                get(`remote-gun-${id}`).pos = vec2(data.x, data.y);
+                get(`remote-gun-${id}`).angle = data.angle;
+                get(`remote-gun-${id}`).flipY = data.flipY;
+            }
+        });
+    });
 
     // update the player-sprite hitbox every frame
     player.onUpdate(() => {
         playerSprite.pos = vec2(player.pos.x, player.pos.y);
     });
-
-    function drawSmallParticle(x, y, f, l) {
-        let size = rand(7, 12);
-        const small_particle = add([
-            rect(size, size),
-            color(74,34,11),
-            pos(x, y-10),
-            anchor("center"),
-            area({ collisionIgnore: ["particle", "player", "spike", "danger"], friction: 0.02, restitution: 0 }),
-            "particle",
-            "small-particle",
-            body(),
-            lifespan(l, { fade: 0.5 }),
-            opacity(1),
-        ]);
-
-        small_particle.addForce(vec2(choose([rand(6000,18000),-rand(6000,18000)]), 0).sub(small_particle.vel).scale(small_particle.mass*f));
-        small_particle.jump(f*rand(800, 1000));
-    }
-
-    const BULLET_SPEED = 1200;
-    const BARREL_OFFSET = 75;
-    function spawnBullet(x, y, dir) {
-        const offset = Vec2.fromAngle(dir).scale(BARREL_OFFSET)
-        const bulletSpawn = vec2(x,y).add(offset);
-
-        const bullet = add([
-            rect(10,5),
-            color(141,145,141),
-            pos(bulletSpawn),
-            anchor("center"),
-            area(),
-            rotate(dir),
-            opacity(),
-            move(Vec2.fromAngle(dir), BULLET_SPEED),
-            lifespan(1.1),
-            "bullet"
-        ]);
-        bullet.gravityScale = 0;
-
-        bullet.onCollide("p-hitbox", () => {
-            drawSmallParticle(bullet.pos.x, bullet.pos.y, 0.1, 0.5);
-            destroy(bullet);
-        });
-    }
-
-    let isFiring = false;
-    function fullAuto() {
-        if (!isFiring) return;
-
-        cursor.move(rand(-20*currGun.recoil, 5*currGun.recoil), -currGun.recoil*100+rand(-20*currGun.recoil, 20*currGun.recoil));
-        spawnBullet(player.pos.x, player.pos.y, gun.angle);
-
-        wait(0.05, fullAuto);
-    }
 
     let prevPos = vec2(player.pos.x, player.pos.y);
     onUpdate(() => {
@@ -305,14 +285,19 @@ scene("game", ({ levelId, coins } = { levelId: 0, coins: 0 }) => {
         //debug.log(deltaPos);
         prevPos = vec2(player.pos.x, player.pos.y);
 
-        if (isMouseDown("left")) {
-            if (!isFiring) {
-                isFiring = true;
-                fullAuto();
-            }   
-        } else {
-            isFiring = false;
+        // recoil and shooting
+        while (isMouseDown("left")) {
+            loop((1/currGun.rps), () => {
+                cursor.move(0, currGun.recoil*5);
+            });
         }
+
+        socket.emit("update", {
+            id: socket.id,
+            x: player.pos.x,
+            y: player.pos.y,
+            angle: gun.angle
+        });
     });
 
     // camera lerping and zooming
@@ -346,11 +331,9 @@ scene("game", ({ levelId, coins } = { levelId: 0, coins: 0 }) => {
 
     onUpdate(() => setCamPos(lerp(getCamPos(), player.worldPos(), DELAY_LERP)));
 
-    /**
     onClick(() => {
         setCursorLocked(true);
     })
-    **/
 
     // action() runs every frame
     let SLAM = false;
@@ -525,9 +508,27 @@ scene("game", ({ levelId, coins } = { levelId: 0, coins: 0 }) => {
         });
     }
 
+    function drawSlamParticle() {
+        let size = rand(7, 12);
+        const slam_particle = add([
+            rect(size, size),
+            color(74,34,11),
+            pos(player.pos.x, player.pos.y-10),
+            anchor("center"),
+            area({ collisionIgnore: ["particle", "player", "spike", "danger"], friction: 0.02, restitution: 0 }),
+            "particle",
+            "slam-particle",
+            body(),
+            lifespan(2, { fade: 0.5 }),
+            opacity(1),
+        ]);
+
+        slam_particle.addForce(vec2(choose([rand(6000,18000),-rand(6000,18000)]), 0).sub(slam_particle.vel).scale(slam_particle.mass));
+        slam_particle.jump(rand(800, 1000));
+    }
     function slam() {
         for (let i = 0; i < rand(5,7); i++) {
-            drawSmallParticle(player.pos.x, player.pos.y, 1, 2);
+            drawSlamParticle();
         }
     }
 
@@ -630,6 +631,12 @@ scene("game", ({ levelId, coins } = { levelId: 0, coins: 0 }) => {
 
     onKeyPress("f", () => {
         setFullscreen(!isFullscreen());
+    });
+
+    socket.on("playerDisconnected", (id) => {
+        destroy(`remote-hitbox-${id}`);
+        destroy(`remote-player-${id}`);
+        destroy(`remote-gun-${id}`);
     });
 });
 
