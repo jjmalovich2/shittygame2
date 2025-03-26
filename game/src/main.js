@@ -7,6 +7,11 @@ loadAssets();
 
 setGravity(3200);
 
+document.addEventListener("click", () => {
+    canvas.requestPointerLock();
+});
+
+//new commit
 // custom component controlling enemy patrol movement
 function patrol(speed = 60, dir = 1) {
     return {
@@ -341,9 +346,11 @@ scene("game", ({ levelId, coins } = { levelId: 0, coins: 0 }) => {
 
     onUpdate(() => setCamPos(lerp(getCamPos(), player.worldPos(), DELAY_LERP)));
 
+    /**
     onClick(() => {
         setCursorLocked(true);
     })
+    **/
 
     // action() runs every frame
     let SLAM = false;
